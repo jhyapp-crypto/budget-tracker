@@ -15,7 +15,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/fireba
 import { getDatabase, ref, onValue, set, remove, update }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-// ✏️ 아래를 본인의 Firebase 설정으로 교체하세요
 const firebaseConfig = {
   apiKey:           "AIzaSyDHmkAeUtz1PvqlH61kMej3sRVC_yG9nMA",
   authDomain:        "jihoon-boyoung-budget.firebaseapp.com",
@@ -29,7 +28,8 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db  = getDatabase(app);
 
-const BUDGET = { '지훈': 100000, '보영': 100000, '공동': 100000, total: 300000 };
+const DEFAULT_BUDGET = { '지훈': 100000, '보영': 100000, '공동': 100000 };
+let BUDGET = { ...DEFAULT_BUDGET, get total() { return this['지훈'] + this['보영'] + this['공동']; } };
 const USERS  = ['지훈', '보영', '공동'];
 const DEFAULT_CATS = ["식비","교통","쇼핑","카페","의료","문화","기타"];
 const PALETTE = ["#FF6B6B","#4ECDC4","#FFE66D","#A29BFE","#74B9FF","#FD79A8","#B2BEC3",
@@ -47,11 +47,25 @@ let editId     = null;
 let filter     = '전체';
 let newCatColor = PALETTE[7];
 let editCatIdx  = null;
+let editingBudget = false;
 
 // Firebase 실시간 리스너
 onValue(ref(db,'entries'),   s => { entries    = s.val()||{}; render(); });
 onValue(ref(db,'categories'),s => { const v=s.val(); if(v&&Array.isArray(v)) categories=v; render(); });
 onValue(ref(db,'catColors'), s => { const v=s.val(); if(v) catColors=v; render(); });
+onValue(ref(db,'budgetLimits'), s => {
+  const v = s.val();
+  if (v) {
+    BUDGET['지훈'] = v['지훈'] || DEFAULT_BUDGET['지훈'];
+    BUDGET['보영'] = v['보영'] || DEFAULT_BUDGET['보영'];
+    BUDGET['공동'] = v['공동'] || DEFAULT_BUDGET['공동'];
+  } else {
+    BUDGET['지훈'] = DEFAULT_BUDGET['지훈'];
+    BUDGET['보영'] = DEFAULT_BUDGET['보영'];
+    BUDGET['공동'] = DEFAULT_BUDGET['공동'];
+  }
+  render();
+});
 onValue(ref(db,'_ping'),     s => {
   document.getElementById('syncDot')?.classList.add('online');
   document.getElementById('syncLabel').textContent = '실시간 연결';
@@ -64,8 +78,8 @@ function fbUpdate(path,val) { return update(ref(db,path),val); }
 function getWeekKey(date) {
   const d = new Date(date);
   d.setHours(12,0,0,0);
-  const day = d.getDay(); // 0=일, 1=월, ..., 6=토
-  const diff = (day === 0) ? -6 : 1 - day; // 월요일로 이동
+  const day = d.getDay();
+  const diff = (day === 0) ? -6 : 1 - day;
   d.setDate(d.getDate() + diff);
   return d.toISOString().slice(0,10);
 }
@@ -88,13 +102,26 @@ window.changeWeek = dir => {
 function weekEntries() { return Object.values(entries).filter(e=>getWeekKey(e.date)===viewWeek); }
 function usedBy(who)   { return weekEntries().filter(e=>e.who===who).reduce((s,e)=>s+e.amount,0); }
 function fmt(n)   { return n.toLocaleString('ko-KR')+'원'; }
+function fmtWon(n){ return (n/10000)%1===0 ? (n/10000)+'만원' : fmt(n); }
 function pct(u,t) { return Math.min(100,Math.round(u/t*100)); }
 function esc(s)   { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+function updateHeaderSubtitle() {
+  const el = document.getElementById('headerSubtitle');
+  if (!el) return;
+  const allSame = BUDGET['지훈'] === BUDGET['보영'] && BUDGET['보영'] === BUDGET['공동'];
+  if (allSame) {
+    el.textContent = `지훈 · 보영 · 공동 각 ${fmtWon(BUDGET['지훈'])}  |  주간 총 ${fmtWon(BUDGET.total)}`;
+  } else {
+    el.textContent = `지훈 ${fmtWon(BUDGET['지훈'])} · 보영 ${fmtWon(BUDGET['보영'])} · 공동 ${fmtWon(BUDGET['공동'])}  |  총 ${fmtWon(BUDGET.total)}`;
+  }
+}
 
 function render() {
   document.getElementById('weekRange').textContent = getWeekRange(viewWeek);
   document.getElementById('weekLabel').textContent  = viewWeek===currentWeekKey()?'이번 주':'';
   document.getElementById('nextBtn').disabled = viewWeek>=currentWeekKey();
+  updateHeaderSubtitle();
 
   const uJ=usedBy('지훈'), uB=usedBy('보영'), uS=usedBy('공동'), uT=uJ+uB+uS;
   document.getElementById('barA').innerHTML      = barHTML('지훈',  uJ, BUDGET['지훈'], '#a29bfe');
@@ -196,6 +223,10 @@ window.saveEdit    = id => {
 };
 
 function renderSettings() {
+  // 예산 한도 섹션
+  const budgetSection = editingBudget ? renderBudgetEdit() : renderBudgetView();
+
+  // 카테고리 섹션
   const catRows=categories.map((cat,i)=>{
     const color=catColors[cat]||'#888';
     if(editCatIdx===i){
@@ -205,13 +236,82 @@ function renderSettings() {
     return `<div class="cat-row"><div class="cat-dot" style="background:${color}"></div><span class="cat-name">${esc(cat)}</span><button class="btn-sm btn-edit" onclick="startEditCat(${i})">수정</button><button class="btn-sm btn-del" onclick="deleteCat('${esc(cat)}')">삭제</button></div>`;
   }).join('');
   const pals=PALETTE.map(c=>`<div class="pal-dot ${newCatColor===c?'selected':''}" style="background:${c}" onclick="setNewCatColor('${c}')"></div>`).join('');
-  return `<div class="settings-card"><div class="settings-title">🏷️ 카테고리 관리</div>${catRows}
-    <div class="settings-divider"><div class="settings-sub">새 카테고리 추가</div>
-    <input type="text" class="form-input" id="newCatName" placeholder="카테고리 이름" style="margin-bottom:10px" onkeydown="if(event.key==='Enter')addCat()">
-    <div class="palette">${pals}</div>
-    <div class="preview-row"><div class="preview-dot" style="background:${newCatColor}"></div><span class="preview-label" id="previewLabel">새 카테고리 미리보기</span></div>
-    <button class="btn-primary" onclick="addCat()">+ 카테고리 추가</button></div></div>`;
+
+  return `
+    ${budgetSection}
+    <div class="settings-card" style="margin-top:14px">
+      <div class="settings-title">🏷️ 카테고리 관리</div>${catRows}
+      <div class="settings-divider"><div class="settings-sub">새 카테고리 추가</div>
+      <input type="text" class="form-input" id="newCatName" placeholder="카테고리 이름" style="margin-bottom:10px" onkeydown="if(event.key==='Enter')addCat()">
+      <div class="palette">${pals}</div>
+      <div class="preview-row"><div class="preview-dot" style="background:${newCatColor}"></div><span class="preview-label" id="previewLabel">새 카테고리 미리보기</span></div>
+      <button class="btn-primary" onclick="addCat()">+ 카테고리 추가</button></div>
+    </div>`;
 }
+
+function renderBudgetView() {
+  const rows = USERS.map(u => `
+    <div class="budget-limit-row">
+      <span class="budget-limit-who" style="color:${WHO_COLOR[u]}">${esc(u)}</span>
+      <span class="budget-limit-val">${fmt(BUDGET[u])}</span>
+    </div>`).join('');
+  return `<div class="settings-card">
+    <div class="settings-title-row">
+      <div class="settings-title">💰 주간 예산 한도</div>
+      <button class="btn-sm btn-edit" onclick="startEditBudget()">수정</button>
+    </div>
+    ${rows}
+    <div class="budget-total-row">
+      <span>총 합계</span>
+      <span style="color:var(--yellow);font-weight:800">${fmt(BUDGET.total)}</span>
+    </div>
+  </div>`;
+}
+
+function renderBudgetEdit() {
+  const rows = USERS.map(u => `
+    <div class="budget-edit-row">
+      <label class="budget-edit-label" style="color:${WHO_COLOR[u]}">${esc(u)}</label>
+      <div class="budget-input-wrap">
+        <input type="number" class="edit-input budget-edit-input" id="bLimit_${u}" value="${BUDGET[u]}" inputmode="numeric" oninput="updateBudgetTotal()">
+        <span class="budget-won">원</span>
+      </div>
+    </div>`).join('');
+  return `<div class="settings-card">
+    <div class="settings-title">💰 주간 예산 한도 수정</div>
+    ${rows}
+    <div class="budget-total-preview" id="budgetTotalPreview">
+      총 합계: ${fmt(BUDGET.total)}
+    </div>
+    <div class="edit-btns" style="margin-top:12px">
+      <button class="btn-save" onclick="saveBudget()">저장</button>
+      <button class="btn-cancel" onclick="cancelEditBudget()">취소</button>
+    </div>
+  </div>`;
+}
+
+window.updateBudgetTotal = () => {
+  const total = USERS.reduce((s, u) => {
+    const v = parseInt(document.getElementById(`bLimit_${u}`)?.value) || 0;
+    return s + v;
+  }, 0);
+  const el = document.getElementById('budgetTotalPreview');
+  if (el) el.textContent = `총 합계: ${fmt(total)}`;
+};
+
+window.startEditBudget = () => { editingBudget = true; render(); };
+window.cancelEditBudget = () => { editingBudget = false; render(); };
+window.saveBudget = () => {
+  const newLimits = {};
+  for (const u of USERS) {
+    const v = parseInt(document.getElementById(`bLimit_${u}`)?.value);
+    if (!v || v <= 0) { alert(`${u}의 한도를 올바르게 입력하세요.`); return; }
+    newLimits[u] = v;
+  }
+  fbSet('budgetLimits', newLimits);
+  editingBudget = false;
+};
+
 function bindSettings() {
   document.getElementById('newCatName')?.addEventListener('input',e=>{const l=document.getElementById('previewLabel');if(l)l.textContent=(e.target.value||'새 카테고리')+' 미리보기';});
 }
@@ -241,7 +341,7 @@ window.saveEditCat = i => {
   editCatIdx=null;
 };
 
-window.setTab = tab => { currentTab=tab; editId=null; document.getElementById('scrollArea').scrollTop=0; render(); };
+window.setTab = tab => { currentTab=tab; editId=null; editingBudget=false; document.getElementById('scrollArea').scrollTop=0; render(); };
 
 window.exportCSV = () => {
   const we=weekEntries();
@@ -253,7 +353,6 @@ window.exportCSV = () => {
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`지출내역_${viewWeek}.csv`; a.click();
 };
 
-// 초기화
 set(ref(db,'_ping'), Date.now());
 render();
 </script>
@@ -331,6 +430,8 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .empty{text-align:center;padding:50px 20px;color:#4a4070;font-size:14px}
 .settings-card{background:var(--card);border-radius:14px;padding:16px;border:1px solid var(--border)}
 .settings-title{font-weight:800;font-size:15px;color:var(--accent);margin-bottom:14px}
+.settings-title-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.settings-title-row .settings-title{margin-bottom:0}
 .cat-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;background:var(--card2);border-radius:10px;padding:10px 12px}
 .cat-dot{width:14px;height:14px;border-radius:4px;flex-shrink:0}
 .cat-name{flex:1;font-size:14px;font-weight:600}
@@ -345,6 +446,18 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .export-btn{position:fixed;bottom:calc(70px + var(--safe-bottom));right:16px;width:44px;height:44px;border-radius:50%;border:1px solid var(--border);background:var(--card);color:var(--teal);font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 12px #0006;z-index:10}
 @keyframes slideUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 .tab-content{animation:slideUp .2s ease}
+
+/* 예산 한도 설정 스타일 */
+.budget-limit-row{display:flex;align-items:center;justify-content:space-between;background:var(--card2);border-radius:10px;padding:10px 14px;margin-bottom:8px}
+.budget-limit-who{font-weight:800;font-size:14px}
+.budget-limit-val{font-weight:700;font-size:14px;color:var(--text)}
+.budget-total-row{display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--border);padding-top:10px;margin-top:4px;font-size:13px;color:var(--muted)}
+.budget-edit-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.budget-edit-label{font-weight:800;font-size:14px;width:36px;flex-shrink:0}
+.budget-input-wrap{position:relative;flex:1}
+.budget-edit-input{padding-right:28px!important}
+.budget-won{position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--muted);pointer-events:none}
+.budget-total-preview{text-align:right;font-size:13px;color:var(--muted);margin-top:4px;padding-top:10px;border-top:1px solid var(--border)}
 </style>
 </head>
 <body>
@@ -353,7 +466,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
     <div class="header-top">
       <div>
         <h1>💜 주간 예산 트래커</h1>
-        <p>지훈 · 보영 · 공동 각 10만원 &nbsp;|&nbsp; 주간 총 30만원</p>
+        <p id="headerSubtitle">지훈 · 보영 · 공동 각 10만원 &nbsp;|&nbsp; 주간 총 30만원</p>
       </div>
       <div class="sync-badge">
         <div class="sync-dot" id="syncDot"></div>
