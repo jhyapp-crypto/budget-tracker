@@ -366,8 +366,8 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .header{background:linear-gradient(135deg,#2d1f6e 0%,#1a1050 100%);padding:48px 20px 14px;border-bottom:1px solid var(--border);flex-shrink:0}
 .header-top{display:flex;align-items:center;justify-content:space-between}
 .header h1{font-size:21px;font-weight:900;color:var(--accent);letter-spacing:.5px}
-.header p{font-size:12px;color:#9b8de8;margin-top:3px;line-height:1.4}
-.sync-badge{display:flex;align-items:center;gap:5px;font-size:12px;color:#9b8de8}
+.header p{font-size:12px;color:#9b8de8;margin-top:6px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sync-badge{display:flex;align-items:center;gap:5px;font-size:12px;color:#9b8de8;white-space:nowrap;flex-shrink:0}
 .sync-dot{width:7px;height:7px;border-radius:50%;background:#444;transition:background .3s}
 .sync-dot.online{background:#00b894;box-shadow:0 0 6px #00b894;animation:pulse 2s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
@@ -464,15 +464,13 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 <div id="app">
   <div class="header">
     <div class="header-top">
-      <div>
-        <h1>💜 주간 예산 트래커</h1>
-        <p id="headerSubtitle">지훈 · 보영 · 공동 각 10만원 &nbsp;|&nbsp; 주간 총 30만원</p>
-      </div>
+      <h1>💜 주간 예산 트래커</h1>
       <div class="sync-badge">
         <div class="sync-dot" id="syncDot"></div>
         <span id="syncLabel">연결 중…</span>
       </div>
     </div>
+    <p id="headerSubtitle">지훈 · 보영 · 공동 각 10만원 &nbsp;|&nbsp; 주간 총 30만원</p>
   </div>
   <div class="scroll-area" id="scrollArea">
     <div class="week-nav">
