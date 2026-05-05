@@ -48,6 +48,7 @@ let filter     = '전체';
 let newCatColor = PALETTE[7];
 let editCatIdx  = null;
 let editingBudget = false;
+let defaultWho  = localStorage.getItem('defaultWho') || '지훈';
 
 // Firebase 실시간 리스너
 onValue(ref(db,'entries'),   s => { entries    = s.val()||{}; render(); });
@@ -151,7 +152,7 @@ function barHTML(label,used,total,color) {
 
 function renderAdd() {
   const catOpts=categories.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
-  const whoOpts=USERS.map(u=>`<option value="${esc(u)}">${esc(u)}</option>`).join('');
+  const whoOpts=USERS.map(u=>`<option value="${esc(u)}" ${u===defaultWho?'selected':''}>${esc(u)}</option>`).join('');
   return `<div class="form-card">
     <div class="form-grid">
       <div class="form-group"><label class="form-label">날짜</label><input type="date" class="form-input" id="fDate" value="${todayStr()}"></div>
@@ -219,12 +220,27 @@ window.saveEdit    = id => {
   const amount=parseInt(document.getElementById('eAmt').value);
   if(!amount||amount<=0){alert('금액을 입력하세요.');return;}
   fbUpdate(`entries/${id}`,{date:document.getElementById('eDate').value,who:document.getElementById('eWho').value,category:document.getElementById('eCat').value,amount,memo:document.getElementById('eMemo').value.trim()});
-  editId=null;
+  editId=null; render();
 };
 
 function renderSettings() {
   // 예산 한도 섹션
   const budgetSection = editingBudget ? renderBudgetEdit() : renderBudgetView();
+
+  // 기본 입력자 섹션 (이 폰에서만)
+  const whoBtns = USERS.map(u => {
+    const active = u===defaultWho;
+    const c = WHO_COLOR[u];
+    const style = active
+      ? `background:${c};border-color:${c};color:#fff`
+      : `color:${c};background:var(--card2);border-color:var(--border)`;
+    return `<button class="who-pick-btn" style="${style}" onclick="setDefaultWho('${esc(u)}')">${esc(u)}</button>`;
+  }).join('');
+  const defaultWhoSection = `<div class="settings-card" style="margin-top:14px">
+    <div class="settings-title">👤 기본 입력자</div>
+    <p class="settings-desc">새 지출 추가 시 ‘누가’에 미리 선택될 사람 (이 폰에서만 적용)</p>
+    <div class="who-pick-row">${whoBtns}</div>
+  </div>`;
 
   // 카테고리 섹션
   const catRows=categories.map((cat,i)=>{
@@ -239,6 +255,7 @@ function renderSettings() {
 
   return `
     ${budgetSection}
+    ${defaultWhoSection}
     <div class="settings-card" style="margin-top:14px">
       <div class="settings-title">🏷️ 카테고리 관리</div>${catRows}
       <div class="settings-divider"><div class="settings-sub">새 카테고리 추가</div>
@@ -299,6 +316,12 @@ window.updateBudgetTotal = () => {
   if (el) el.textContent = `총 합계: ${fmt(total)}`;
 };
 
+window.setDefaultWho = (who) => {
+  if (!USERS.includes(who)) return;
+  defaultWho = who;
+  localStorage.setItem('defaultWho', who);
+  render();
+};
 window.startEditBudget = () => { editingBudget = true; render(); };
 window.cancelEditBudget = () => { editingBudget = false; render(); };
 window.saveBudget = () => {
@@ -309,7 +332,7 @@ window.saveBudget = () => {
     newLimits[u] = v;
   }
   fbSet('budgetLimits', newLimits);
-  editingBudget = false;
+  editingBudget = false; render();
 };
 
 function bindSettings() {
@@ -338,7 +361,7 @@ window.saveEditCat = i => {
   const updC={...catColors,[newName]:catColors[oldName]}; if(newName!==oldName) delete updC[oldName];
   fbSet('categories',upd); fbSet('catColors',updC);
   if(newName!==oldName){ const us={}; Object.values(entries).forEach(e=>{if(e.category===oldName) us[`entries/${e.id}/category`]=newName;}); if(Object.keys(us).length) update(ref(db),us); }
-  editCatIdx=null;
+  editCatIdx=null; render();
 };
 
 window.setTab = tab => { currentTab=tab; editId=null; editingBudget=false; document.getElementById('scrollArea').scrollTop=0; render(); };
@@ -458,6 +481,12 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .budget-edit-input{padding-right:32px!important}
 .budget-won{position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:13px;color:#9b8de8;pointer-events:none}
 .budget-total-preview{text-align:right;font-size:14px;color:#b8aef0;margin-top:4px;padding-top:11px;border-top:1px solid var(--border);font-weight:600}
+
+/* 기본 입력자 선택 */
+.settings-desc{font-size:12px;color:#9b8de8;margin-top:-4px;margin-bottom:12px;line-height:1.4}
+.who-pick-row{display:flex;gap:8px}
+.who-pick-btn{flex:1;border:1.5px solid var(--border);border-radius:10px;padding:12px 8px;font-weight:800;font-size:15px;cursor:pointer;font-family:inherit;transition:all .15s;min-height:46px}
+.who-pick-btn:active{transform:scale(.97)}
 </style>
 </head>
 <body>
