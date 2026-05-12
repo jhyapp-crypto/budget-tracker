@@ -8,6 +8,10 @@
 <meta name="apple-mobile-web-app-title" content="예산 트래커">
 <meta name="theme-color" content="#0f0c24">
 <title>💜 주간 예산 트래커</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/x-icon" href="favicon.ico">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;900&display=swap" rel="stylesheet">
 
 <script type="module">
@@ -411,6 +415,13 @@ window.exportCSV = () => {
 
 set(ref(db,'_ping'), Date.now());
 render();
+
+// PWA service worker 등록 (앱 설치 가능 + 오프라인 캐시)
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('service-worker.js').catch(err => console.warn('SW reg failed:', err));
+  });
+}
 </script>
 
 <style>
