@@ -49,6 +49,7 @@ let newCatColor = PALETTE[7];
 let editCatIdx  = null;
 let editingBudget = false;
 let defaultWho  = localStorage.getItem('defaultWho') || '지훈';
+let defaultCategories = (()=>{ try { return JSON.parse(localStorage.getItem('defaultCategories'))||{}; } catch(e) { return {}; } })();  // per-device per-user. {지훈: '편의점', ...}
 
 // Firebase 실시간 리스너
 onValue(ref(db,'entries'),   s => { entries    = s.val()||{}; render(); });
@@ -92,6 +93,10 @@ function getWeekRange(key) {
 }
 function todayStr()      { const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function currentWeekKey(){ return getWeekKey(new Date()); }
+function getDefaultCat(who) {
+  const c = defaultCategories[who];
+  return (c && categories.includes(c)) ? c : categories[0];
+}
 
 window.changeWeek = dir => {
   const d=new Date(viewWeek); d.setDate(d.getDate()+dir*7);
@@ -151,7 +156,8 @@ function barHTML(label,used,total,color) {
 }
 
 function renderAdd() {
-  const catOpts=categories.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
+  const initialCat = getDefaultCat(defaultWho);
+  const catOpts=categories.map(c=>`<option value="${esc(c)}" ${c===initialCat?'selected':''}>${esc(c)}</option>`).join('');
   const whoOpts=USERS.map(u=>`<option value="${esc(u)}" ${u===defaultWho?'selected':''}>${esc(u)}</option>`).join('');
   return `<div class="form-card">
     <div class="form-grid">
@@ -168,6 +174,10 @@ function renderAdd() {
 }
 function bindAdd() {
   document.getElementById('fAmt')?.addEventListener('keydown',e=>{if(e.key==='Enter')addEntry();});
+  document.getElementById('fWho')?.addEventListener('change',e=>{
+    const sel=document.getElementById('fCat');
+    if(sel) sel.value=getDefaultCat(e.target.value);
+  });
 }
 window.addEntry = () => {
   const date=document.getElementById('fDate').value, who=document.getElementById('fWho').value,
@@ -242,6 +252,21 @@ function renderSettings() {
     <div class="who-pick-row">${whoBtns}</div>
   </div>`;
 
+  // 기본 카테고리 섹션 (사용자 속성 → 모든 폰 공유)
+  const defaultCatRows = USERS.map(u => {
+    const cur = getDefaultCat(u);
+    const opts = categories.map(c => `<option value="${esc(c)}" ${c===cur?'selected':''}>${esc(c)}</option>`).join('');
+    return `<div class="default-cat-row">
+      <span class="default-cat-who" style="color:${WHO_COLOR[u]}">${esc(u)}</span>
+      <select class="form-select default-cat-select" data-who="${esc(u)}">${opts}</select>
+    </div>`;
+  }).join('');
+  const defaultCatSection = `<div class="settings-card" style="margin-top:14px">
+    <div class="settings-title">🏷️ 기본 카테고리</div>
+    <p class="settings-desc">‘누가’ 선택 시 자동으로 골라질 카테고리 (이 폰에서만 적용)</p>
+    ${defaultCatRows}
+  </div>`;
+
   // 카테고리 섹션
   const catRows=categories.map((cat,i)=>{
     const color=catColors[cat]||'#888';
@@ -256,6 +281,7 @@ function renderSettings() {
   return `
     ${budgetSection}
     ${defaultWhoSection}
+    ${defaultCatSection}
     <div class="settings-card" style="margin-top:14px">
       <div class="settings-title">🏷️ 카테고리 관리</div>${catRows}
       <div class="settings-divider"><div class="settings-sub">새 카테고리 추가</div>
@@ -337,6 +363,13 @@ window.saveBudget = () => {
 
 function bindSettings() {
   document.getElementById('newCatName')?.addEventListener('input',e=>{const l=document.getElementById('previewLabel');if(l)l.textContent=(e.target.value||'새 카테고리')+' 미리보기';});
+  document.querySelectorAll('.default-cat-select').forEach(sel=>{
+    sel.addEventListener('change',e=>{
+      const who=e.target.dataset.who;
+      defaultCategories[who]=e.target.value;
+      localStorage.setItem('defaultCategories',JSON.stringify(defaultCategories));
+    });
+  });
 }
 window.addCat = () => {
   const name=(document.getElementById('newCatName')?.value||'').trim();
@@ -487,6 +520,12 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .who-pick-row{display:flex;gap:8px}
 .who-pick-btn{flex:1;border:1.5px solid var(--border);border-radius:10px;padding:12px 8px;font-weight:800;font-size:15px;cursor:pointer;font-family:inherit;transition:all .15s;min-height:46px}
 .who-pick-btn:active{transform:scale(.97)}
+
+/* 기본 카테고리 선택 (사용자별) */
+.default-cat-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.default-cat-row:last-child{margin-bottom:0}
+.default-cat-who{font-weight:800;font-size:15px;width:42px;flex-shrink:0}
+.default-cat-select{flex:1}
 </style>
 </head>
 <body>
