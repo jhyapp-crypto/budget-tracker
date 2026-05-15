@@ -1,0 +1,10 @@
+{
+  "rules": {
+    "entries":           { ".read": true, ".write": true },
+    "categories":        { ".read": true, ".write": true },
+    "catColors":         { ".read": true, ".write": true },
+    "budgetLimits":      { ".read": true, ".write": true },
+    "_ping":             { ".read": true, ".write": true },
+    "defaultCategories": { ".read": true, ".write": true }
+  }
+}
