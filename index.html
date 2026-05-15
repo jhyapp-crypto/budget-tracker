@@ -53,14 +53,13 @@ let newCatColor = PALETTE[7];
 let editCatIdx  = null;
 let editingBudget = false;
 let editingDefaultCats = false;
-let defaultWho  = localStorage.getItem('defaultWho') || '지훈';  // per-device — 캐시 삭제 시 리셋 OK
-let defaultCategories = {};  // Firebase 공유 — 캐시 삭제 무관, 폰 바꿔도 유지. {지훈: '편의점', ...}
+let defaultWho  = localStorage.getItem('defaultWho') || '지훈';  // per-device
+let defaultCategories = (()=>{ try { return JSON.parse(localStorage.getItem('defaultCategories'))||{}; } catch(e) { return {}; } })();  // per-device. 캐시 삭제 시 리셋
 
 // Firebase 실시간 리스너
 onValue(ref(db,'entries'),   s => { entries    = s.val()||{}; render(); });
 onValue(ref(db,'categories'),s => { const v=s.val(); if(v&&Array.isArray(v)) categories=v; render(); });
 onValue(ref(db,'catColors'), s => { const v=s.val(); if(v) catColors=v; render(); });
-onValue(ref(db,'defaultCategories'), s => { defaultCategories = s.val()||{}; render(); });
 onValue(ref(db,'budgetLimits'), s => {
   const v = s.val();
   if (v) {
@@ -376,12 +375,11 @@ function renderDefaultCatsEdit() {
 window.startEditDefaultCats = () => { editingDefaultCats = true; render(); };
 window.cancelEditDefaultCats = () => { editingDefaultCats = false; render(); };
 window.saveDefaultCats = () => {
-  const next = {};
   for (const u of USERS) {
     const v = document.getElementById(`dCat_${u}`)?.value;
-    if (v && categories.includes(v)) next[u] = v;
+    if (v && categories.includes(v)) defaultCategories[u] = v;
   }
-  fbSet('defaultCategories', next);
+  localStorage.setItem('defaultCategories', JSON.stringify(defaultCategories));
   editingDefaultCats = false; render();
 };
 
