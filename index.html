@@ -52,6 +52,7 @@ let filter     = '전체';
 let newCatColor = PALETTE[7];
 let editCatIdx  = null;
 let editingBudget = false;
+let editingDefaultCats = false;
 let defaultWho  = localStorage.getItem('defaultWho') || '지훈';
 let defaultCategories = (()=>{ try { return JSON.parse(localStorage.getItem('defaultCategories'))||{}; } catch(e) { return {}; } })();  // per-device per-user. {지훈: '편의점', ...}
 
@@ -256,20 +257,8 @@ function renderSettings() {
     <div class="who-pick-row">${whoBtns}</div>
   </div>`;
 
-  // 기본 카테고리 섹션 (사용자 속성 → 모든 폰 공유)
-  const defaultCatRows = USERS.map(u => {
-    const cur = getDefaultCat(u);
-    const opts = categories.map(c => `<option value="${esc(c)}" ${c===cur?'selected':''}>${esc(c)}</option>`).join('');
-    return `<div class="default-cat-row">
-      <span class="default-cat-who" style="color:${WHO_COLOR[u]}">${esc(u)}</span>
-      <select class="form-select default-cat-select" data-who="${esc(u)}">${opts}</select>
-    </div>`;
-  }).join('');
-  const defaultCatSection = `<div class="settings-card" style="margin-top:14px">
-    <div class="settings-title">🏷️ 기본 카테고리</div>
-    <p class="settings-desc">‘누가’ 선택 시 자동으로 골라질 카테고리 (이 폰에서만 적용)</p>
-    ${defaultCatRows}
-  </div>`;
+  // 기본 카테고리 섹션 (이 폰에서만 적용, 보기/수정 모드)
+  const defaultCatSection = editingDefaultCats ? renderDefaultCatsEdit() : renderDefaultCatsView();
 
   // 카테고리 섹션
   const catRows=categories.map((cat,i)=>{
@@ -346,6 +335,54 @@ window.updateBudgetTotal = () => {
   if (el) el.textContent = `총 합계: ${fmt(total)}`;
 };
 
+function renderDefaultCatsView() {
+  const rows = USERS.map(u => {
+    const cur = getDefaultCat(u);
+    return `<div class="default-cat-row">
+      <span class="default-cat-who" style="color:${WHO_COLOR[u]}">${esc(u)}</span>
+      <span class="default-cat-val">${esc(cur)}</span>
+    </div>`;
+  }).join('');
+  return `<div class="settings-card" style="margin-top:14px">
+    <div class="settings-title-row">
+      <div class="settings-title">🏷️ 기본 카테고리</div>
+      <button class="btn-sm btn-edit" onclick="startEditDefaultCats()">수정</button>
+    </div>
+    <p class="settings-desc">‘누가’ 선택 시 자동으로 골라질 카테고리 (이 폰에서만 적용)</p>
+    ${rows}
+  </div>`;
+}
+
+function renderDefaultCatsEdit() {
+  const rows = USERS.map(u => {
+    const cur = getDefaultCat(u);
+    const opts = categories.map(c => `<option value="${esc(c)}" ${c===cur?'selected':''}>${esc(c)}</option>`).join('');
+    return `<div class="default-cat-row">
+      <span class="default-cat-who" style="color:${WHO_COLOR[u]}">${esc(u)}</span>
+      <select class="form-select default-cat-select" id="dCat_${esc(u)}">${opts}</select>
+    </div>`;
+  }).join('');
+  return `<div class="settings-card" style="margin-top:14px">
+    <div class="settings-title">🏷️ 기본 카테고리 수정</div>
+    ${rows}
+    <div class="edit-btns" style="margin-top:12px">
+      <button class="btn-save" onclick="saveDefaultCats()">저장</button>
+      <button class="btn-cancel" onclick="cancelEditDefaultCats()">취소</button>
+    </div>
+  </div>`;
+}
+
+window.startEditDefaultCats = () => { editingDefaultCats = true; render(); };
+window.cancelEditDefaultCats = () => { editingDefaultCats = false; render(); };
+window.saveDefaultCats = () => {
+  for (const u of USERS) {
+    const v = document.getElementById(`dCat_${u}`)?.value;
+    if (v && categories.includes(v)) defaultCategories[u] = v;
+  }
+  localStorage.setItem('defaultCategories', JSON.stringify(defaultCategories));
+  editingDefaultCats = false; render();
+};
+
 window.setDefaultWho = (who) => {
   if (!USERS.includes(who)) return;
   defaultWho = who;
@@ -367,13 +404,6 @@ window.saveBudget = () => {
 
 function bindSettings() {
   document.getElementById('newCatName')?.addEventListener('input',e=>{const l=document.getElementById('previewLabel');if(l)l.textContent=(e.target.value||'새 카테고리')+' 미리보기';});
-  document.querySelectorAll('.default-cat-select').forEach(sel=>{
-    sel.addEventListener('change',e=>{
-      const who=e.target.dataset.who;
-      defaultCategories[who]=e.target.value;
-      localStorage.setItem('defaultCategories',JSON.stringify(defaultCategories));
-    });
-  });
 }
 window.addCat = () => {
   const name=(document.getElementById('newCatName')?.value||'').trim();
@@ -401,7 +431,7 @@ window.saveEditCat = i => {
   editCatIdx=null; render();
 };
 
-window.setTab = tab => { currentTab=tab; editId=null; editingBudget=false; document.getElementById('scrollArea').scrollTop=0; render(); };
+window.setTab = tab => { currentTab=tab; editId=null; editingBudget=false; editingDefaultCats=false; document.getElementById('scrollArea').scrollTop=0; render(); };
 
 window.exportCSV = () => {
   const we=weekEntries();
@@ -532,11 +562,12 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .who-pick-btn{flex:1;border:1.5px solid var(--border);border-radius:10px;padding:12px 8px;font-weight:800;font-size:15px;cursor:pointer;font-family:inherit;transition:all .15s;min-height:46px}
 .who-pick-btn:active{transform:scale(.97)}
 
-/* 기본 카테고리 선택 (사용자별) */
-.default-cat-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+/* 기본 카테고리 (사용자별) */
+.default-cat-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;background:var(--card2);border-radius:10px;padding:10px 14px}
 .default-cat-row:last-child{margin-bottom:0}
 .default-cat-who{font-weight:800;font-size:15px;width:42px;flex-shrink:0}
-.default-cat-select{flex:1}
+.default-cat-val{flex:1;font-size:15px;font-weight:600;color:var(--text)}
+.default-cat-select{flex:1;background:var(--bg)!important}
 </style>
 </head>
 <body>

@@ -1,6 +1,6 @@
 // 주간 예산 트래커 — minimal service worker
 // 캐시 버전: index.html 또는 manifest 변경 시 v 숫자 올리면 강제 갱신
-const CACHE = 'budget-tracker-v2';
+const CACHE = 'budget-tracker-v3';
 const ASSETS = [
   './',
   './index.html',
